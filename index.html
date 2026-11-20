@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>量子どうぶつしょうぎ ビューア</title>
+<style>
+  :root {
+    --p1-bg: #e3f2fd;
+    --p1-border: #64b5f6;
+    --p1-color: #0d47a1;
+    --p2-bg: #ffebee;
+    --p2-border: #e57373;
+    --p2-color: #b71c1c;
+    --cell-size: 80px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f8f9fa;
+    margin: 0;
+    padding: 24px;
+    display: flex;
+    justify-content: center;
+    color: #333;
+  }
+
+  .container {
+    display: flex;
+    gap: 32px;
+    background: #ffffff;
+    padding: 24px 32px;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    position: relative;
+  }
+
+  /* 盤面セクション */
+  .game-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+
+  /* 手番表示 */
+  .turn-indicator {
+    font-size: 15px;
+    font-weight: bold;
+    padding: 6px 16px;
+    border-radius: 20px;
+    margin-bottom: 12px;
+    letter-spacing: 0.05em;
+  }
+  .turn-p1 {
+    background: var(--p1-bg);
+    color: var(--p1-color);
+    border: 1px solid var(--p1-border);
+  }
+  .turn-p2 {
+    background: var(--p2-bg);
+    color: var(--p2-color);
+    border: 1px solid var(--p2-border);
+  }
+
+  /* 持ち駒トレイ */
+  .hand-tray {
+    display: flex;
+    gap: 8px;
+    min-height: calc(var(--cell-size) * 0.85 + 8px);
+    width: calc(var(--cell-size) * 3 + 40px);
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: #f1f3f5;
+    box-sizing: border-box;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .hand-label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #666;
+    margin-right: 4px;
+    writing-mode: vertical-rl;
+  }
+  .hand-pieces {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* 盤面ラッパー (座標つき) */
+  .board-wrapper {
+    display: grid;
+    grid-template-columns: 24px auto;
+    grid-template-rows: 24px auto;
+    margin: 4px 0 12px 0;
+  }
+
+  .col-coords {
+    grid-column: 2;
+    display: grid;
+    grid-template-columns: repeat(3, var(--cell-size));
+    gap: 4px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: bold;
+    color: #888;
+    line-height: 24px;
+  }
+
+  .row-coords {
+    grid-row: 2;
+    display: grid;
+    grid-template-rows: repeat(4, var(--cell-size));
+    gap: 4px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: bold;
+    color: #888;
+    line-height: var(--cell-size);
+  }
+
+  /* 盤面本体 */
+  .board-grid {
+    grid-column: 2;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(3, var(--cell-size));
+    grid-template-rows: repeat(4, var(--cell-size));
+    gap: 4px;
+    background: #bbb;
+    padding: 4px;
+    border-radius: 8px;
+    border: 2px solid #999;
+  }
+
+  .cell {
+    background: #ffffff;
+    border-radius: 4px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    transition: background 0.15s;
+  }
+
+  .cell.last-move {
+    background: #fff9c4 !important; /* 淡い黄色ハイライト */
+  }
+
+  .cell.legal-target {
+    background: #e8f5e9 !important;
+  }
+  .cell.legal-target::after {
+    content: '';
+    width: 14px;
+    height: 14px;
+    background: #4caf50;
+    border-radius: 50%;
+    opacity: 0.6;
+    position: absolute;
+  }
+
+  /* 駒のデザイン (四角形・全体薄塗り・2x2文字) */
+  .piece {
+    width: calc(var(--cell-size) * 0.88);
+    height: calc(var(--cell-size) * 0.88);
+    border-radius: 6px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    box-sizing: border-box;
+    padding: 3px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+    border: 1.5px solid transparent;
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+
+  .piece.p1 {
+    background: var(--p1-bg);
+    border-color: var(--p1-border);
+    color: var(--p1-color);
+  }
+
+  .piece.p2 {
+    background: var(--p2-bg);
+    border-color: var(--p2-border);
+    color: var(--p2-color);
+  }
+
+  .piece.selected {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 3px #ff9800;
+  }
+
+  .piece-char {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  /* 持ち駒の駒サイズ */
+  .hand-pieces .piece {
+    width: calc(var(--cell-size) * 0.72);
+    height: calc(var(--cell-size) * 0.72);
+  }
+  .hand-pieces .piece-char {
+    font-size: 12px;
+  }
+
+  /* 勝利トースト通知 (徐々に消える) */
+  .win-toast {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(33, 33, 33, 0.92);
+    color: #ffffff;
+    font-size: 26px;
+    font-weight: bold;
+    padding: 16px 36px;
+    border-radius: 30px;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 1.5s ease-out;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+    letter-spacing: 0.08em;
+  }
+  .win-toast.show {
+    opacity: 1;
+    transition: none; /* 表示時は瞬時にパッと出る */
+  }
+
+  /* サイドパネル (操作 & 棋譜) */
+  .side-panel {
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  button {
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    background: #e9ecef;
+    color: #495057;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  button:hover:not(:disabled) {
+    background: #dee2e6;
+    color: #212529;
+  }
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  button.primary {
+    background: #1976d2;
+    color: white;
+  }
+  button.primary:hover:not(:disabled) {
+    background: #1565c0;
+  }
+
+  .log-box {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    padding: 12px;
+    background: #fafafa;
+  }
+  .log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: bold;
+    color: #495057;
+  }
+  .log-content {
+    flex: 1;
+    height: 380px;
+    overflow-y: auto;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 8px;
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- 盤面メインセクション -->
+  <div class="game-section">
+    <!-- 後手 持ち駒 -->
+    <div class="hand-tray" id="p2-hand-tray">
+      <div class="hand-label">P2 Hand</div>
+      <div class="hand-pieces" id="p2-hand-pieces"></div>
+    </div>
+
+    <!-- 手番インジケーター -->
+    <div class="turn-indicator turn-p1" id="turn-indicator">P1 to Move</div>
+
+    <!-- 盤面 (座標つき) -->
+    <div class="board-wrapper">
+      <div class="col-coords">
+        <div>0</div><div>1</div><div>2</div>
+      </div>
+      <div class="row-coords">
+        <div>0</div><div>1</div><div>2</div><div>3</div>
+      </div>
+      <div class="board-grid" id="board-grid"></div>
+    </div>
+
+    <!-- 先手 持ち駒 -->
+    <div class="hand-tray" id="p1-hand-tray">
+      <div class="hand-label">P1 Hand</div>
+      <div class="hand-pieces" id="p1-hand-pieces"></div>
+    </div>
+
+    <!-- 勝利メッセージ (徐々にフェードアウト) -->
+    <div class="win-toast" id="win-toast">P1 Wins!</div>
+  </div>
+
+  <!-- 操作 & 棋譜パネル -->
+  <div class="side-panel">
+    <div class="controls">
+      <button id="btn-undo" disabled>1手戻る</button>
+      <button id="btn-redo" style="display: none;">1手進む</button>
+      <button id="btn-reset">最初から</button>
+      <button id="btn-copy" class="primary">棋譜コピー</button>
+    </div>
+
+    <div class="log-box">
+      <div class="log-header">
+        <span>対局棋譜ログ</span>
+      </div>
+      <div class="log-content" id="log-content"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- 定数と順列定義 ---
+const COLS = 3;
+const ROWS = 4;
+const P1 = 1; // 先手
+const P2 = 2; // 後手
+
+const PIECES = ['l', 'g', 'e', 'c']; // ライオン, キリン, ゾウ, ヒヨコ
+const CHAR_MAP = {
+  'c': 'ヒ',
+  'h': 'ニ',
+  'g': 'キ',
+  'e': 'ゾ',
+  'l': 'ラ'
+};
+
+// 4! = 24通りの全順列
+function generatePermutations(arr) {
+  if (arr.length <= 1) return [arr];
+  let res = [];
+  for (let i = 0; i < arr.length; i++) {
+    const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
+    for (const p of generatePermutations(rest)) {
+      res.push([arr[i], ...p]);
+    }
+  }
+  return res;
+}
+const ALL_PERMUTATIONS = generatePermutations(PIECES);
+
+// 移動ベクトル定義
+const VECTORS = {
+  [P1]: {
+    'l': [[-1,-1], [0,-1], [1,-1], [-1,0], [1,0], [-1,1], [0,1], [1,1]],
+    'g': [[0,-1], [0,1], [-1,0], [1,0]],
+    'e': [[-1,-1], [1,-1], [-1,1], [1,1]],
+    'c': [[0,-1]],
+    'h': [[-1,-1], [0,-1], [1,-1], [-1,0], [1,0], [0,1]]
+  },
+  [P2]: {
+    'l': [[-1,-1], [0,-1], [1,-1], [-1,0], [1,0], [-1,1], [0,1], [1,1]],
+    'g': [[0,-1], [0,1], [-1,0], [1,0]],
+    'e': [[-1,-1], [1,-1], [-1,1], [1,1]],
+    'c': [[0,1]],
+    'h': [[-1,1], [0,1], [1,1], [-1,0], [1,0], [0,-1]]
+  }
+};
+
+function getCapablePieces(player, dx, dy) {
+  const capable = new Set();
+  const map = VECTORS[player];
+  for (const piece in map) {
+    if (map[piece].some(v => v[0] === dx && v[1] === dy)) {
+      capable.add(piece);
+    }
+  }
+  return capable;
+}
+
+// --- ゲーム状態クラス ---
+class GameState {
+  constructor() {
+    this.grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+    this.hands = { [P1]: [], [P2]: [] };
+    this.validPerms = {
+      [P1]: Array.from({length: 24}, (_, i) => i),
+      [P2]: Array.from({length: 24}, (_, i) => i)
+    };
+    this.promoted = {};
+    for (const p of [P1, P2]) {
+      for (let pid = 0; pid < 4; pid++) {
+        this.promoted[`${p}_${pid}`] = false;
+      }
+    }
+    this.turn = P1;
+    this.winner = null;
+    this.lastMove = null; // { from: [c, r], to: [c, r] }
+    this.historyText = [];
+  }
+
+  clone() {
+    const s = new GameState();
+    s.grid = this.grid.map(row => row.map(cell => cell ? {...cell} : null));
+    s.hands = { [P1]: this.hands[P1].map(x => ({...x})), [P2]: this.hands[P2].map(x => ({...x})) };
+    s.validPerms = { [P1]: [...this.validPerms[P1]], [P2]: [...this.validPerms[P2]] };
+    s.promoted = { ...this.promoted };
+    s.turn = this.turn;
+    s.winner = this.winner;
+    s.lastMove = this.lastMove ? { from: this.lastMove.from ? [...this.lastMove.from] : null, to: [...this.lastMove.to] } : null;
+    s.historyText = [...this.historyText];
+    return s;
+  }
+
+  setup() {
+    // 先手初期配置: (0,3)=0, (1,3)=1, (2,3)=2, (1,2)=3
+    this.grid[3][0] = { controller: P1, owner: P1, pid: 0 };
+    this.grid[3][1] = { controller: P1, owner: P1, pid: 1 };
+    this.grid[3][2] = { controller: P1, owner: P1, pid: 2 };
+    this.grid[2][1] = { controller: P1, owner: P1, pid: 3 };
+
+    // 後手初期配置: (2,0)=0, (1,0)=1, (0,0)=2, (1,1)=3
+    this.grid[0][2] = { controller: P2, owner: P2, pid: 0 };
+    this.grid[0][1] = { controller: P2, owner: P2, pid: 1 };
+    this.grid[0][0] = { controller: P2, owner: P2, pid: 2 };
+    this.grid[1][1] = { controller: P2, owner: P2, pid: 3 };
+  }
+
+  getCandidates(owner, pid) {
+    const perms = this.validPerms[owner];
+    const isProm = this.promoted[`${owner}_${pid}`];
+    const cands = new Set();
+    for (const idx of perms) {
+      const base = ALL_PERMUTATIONS[idx][pid];
+      if (base === 'c' && isProm) cands.add('h');
+      else cands.add(base);
+    }
+    return cands;
+  }
+
+  // 棋譜用の4文字ピリオド表記 (例: "c.gl", "h.gl", "C.GL", "H.GL")
+  getPeriodNotation(owner, pid, isP1) {
+    const cands = this.getCandidates(owner, pid);
+    const order = ['c', 'e', 'g', 'l'];
+    let str = "";
+    for (const p of order) {
+      if (p === 'c') {
+        if (cands.has('h')) {
+          str += isP1 ? 'h' : 'H';
+        } else if (cands.has('c')) {
+          str += isP1 ? 'c' : 'C';
+        } else {
+          str += ".";
+        }
+      } else {
+        if (cands.has(p)) {
+          str += isP1 ? p : p.toUpperCase();
+        } else {
+          str += ".";
+        }
+      }
+    }
+    return str;
+  }
+
+  canBeLion(owner, pid) {
+    return this.validPerms[owner].some(idx => ALL_PERMUTATIONS[idx][pid] === 'l');
+  }
+
+  getLegalMoves(player) {
+    if (this.winner) return [];
+    const moves = [];
+
+    // 盤上の移動
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = this.grid[r][c];
+        if (cell && cell.controller === player) {
+          const cands = this.getCandidates(cell.owner, cell.pid);
+          const validVecs = new Set();
+          for (const p of cands) {
+            for (const v of VECTORS[player][p]) {
+              validVecs.add(`${v[0]},${v[1]}`);
+            }
+          }
+          for (const vStr of validVecs) {
+            const [dc, dr] = vStr.split(',').map(Number);
+            const nc = c + dc, nr = r + dr;
+            if (nc >= 0 && nc < COLS && nr >= 0 && nr < ROWS) {
+              const target = this.grid[nr][nc];
+              if (!target || target.controller !== player) {
+                moves.push({ from: [c, r], to: [nc, nr], isDrop: false, token: { owner: cell.owner, pid: cell.pid } });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 持ち駒を打つ
+    for (let i = 0; i < this.hands[player].length; i++) {
+      const piece = this.hands[player][i];
+      const cands = this.getCandidates(piece.owner, piece.pid);
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (!this.grid[r][c]) {
+            const isFurthest = (player === P1 && r === 0) || (player === P2 && r === ROWS - 1);
+            if (isFurthest) {
+              const hasNonChick = Array.from(cands).some(p => p === 'g' || p === 'e');
+              if (!hasNonChick) continue; // ヒヨコしか残ってない駒は最奥不可
+            }
+            moves.push({ from: null, to: [c, r], isDrop: true, handIndex: i, token: { owner: piece.owner, pid: piece.pid } });
+          }
+        }
+      }
+    }
+    return moves;
+  }
+
+  applyMove(move) {
+    const player = this.turn;
+    const opp = 3 - player;
+    const { owner, pid } = move.token;
+
+    // 着手前の文字列表現
+    const notationBefore = this.getPeriodNotation(owner, pid, player === P1);
+
+    if (move.isDrop) {
+      // 持ち駒から打つ
+      this.hands[player].splice(move.handIndex, 1);
+      const isFurthest = (player === P1 && move.to[1] === 0) || (player === P2 && move.to[1] === ROWS - 1);
+      if (isFurthest) {
+        this.validPerms[owner] = this.validPerms[owner].filter(idx => ALL_PERMUTATIONS[idx][pid] !== 'c');
+      }
+      this.grid[move.to[1]][move.to[0]] = { controller: player, owner, pid };
+    } else {
+      // 盤上移動
+      const dc = move.to[0] - move.from[0];
+      const dr = move.to[1] - move.from[1];
+      const capable = getCapablePieces(player, dc, dr);
+      const isProm = this.promoted[`${owner}_${pid}`];
+
+      // 生き残り順列のフィルタリング (波束収縮)
+      this.validPerms[owner] = this.validPerms[owner].filter(idx => {
+        const base = ALL_PERMUTATIONS[idx][pid];
+        const actual = (base === 'c' && isProm) ? 'h' : base;
+        return capable.has(actual);
+      });
+
+      // 相手駒の捕獲
+      const target = this.grid[move.to[1]][move.to[0]];
+      if (target) {
+        // 取られた駒からライオンを除外した順列を試算
+        const permsWithoutLion = this.validPerms[target.owner].filter(idx => ALL_PERMUTATIONS[idx][target.pid] !== 'l');
+        
+        if (permsWithoutLion.length === 0) {
+          // 【キャッチ勝ち】取った駒こそが相手のライオンだった！
+          // 順列をゼロにせず、この駒がライオンである順列に収束させる
+          this.validPerms[target.owner] = this.validPerms[target.owner].filter(idx => ALL_PERMUTATIONS[idx][target.pid] === 'l');
+          this.winner = player; // 即座にキャッチ勝ち確定
+        } else {
+          // 通常の捕獲: 取られた駒からライオンを除外
+          this.validPerms[target.owner] = permsWithoutLion;
+        }
+        
+        this.promoted[`${target.owner}_${target.pid}`] = false;
+        this.hands[player].push({ owner: target.owner, pid: target.pid });
+      }
+
+      this.grid[move.from[1]][move.from[0]] = null;
+
+      // 成り判定
+      const furthestRow = (player === P1) ? 0 : ROWS - 1;
+      if (move.to[1] === furthestRow) {
+        this.promoted[`${owner}_${pid}`] = true;
+      }
+
+      this.grid[move.to[1]][move.to[0]] = { controller: player, owner, pid };
+    }
+
+    // 着手後の文字列表現
+    const notationAfter = this.getPeriodNotation(owner, pid, player === P1);
+
+    // 棋譜文字列の記録 (指定フォーマット)
+    const moveNum = this.historyText.length + 1;
+    const pStr = (player === P1) ? "先手" : "後手";
+    const actStr = move.isDrop ? "打" : "動";
+    const fromStr = move.from ? `(${move.from[0]},${move.from[1]})` : "手駒";
+    const toStr = `(${move.to[0]},${move.to[1]})`;
+    const logLine = `${moveNum}. ${pStr} ${actStr} ${notationBefore}: ${fromStr} -> ${notationAfter}${toStr}`;
+    this.historyText.push(logLine);
+
+    this.lastMove = { from: move.from, to: move.to };
+    this.turn = opp;
+    this.checkWinner(player); // 指し終えたプレイヤーを渡す
+  }
+
+  checkWinner(lastMovePlayer) {
+    if (this.winner) return;
+
+    // 1. キャッチ判定: ライオン可能性が全滅したら負け
+    const p1HasLion = [0,1,2,3].some(pid => this.canBeLion(P1, pid));
+    const p2HasLion = [0,1,2,3].some(pid => this.canBeLion(P2, pid));
+    if (!p1HasLion && !p2HasLion) return;
+    if (!p1HasLion) {
+      this.winner = P2;
+      return;
+    }
+    if (!p2HasLion) {
+      this.winner = P1;
+      return;
+    }
+
+    if (!lastMovePlayer) return;
+    const opp = 3 - lastMovePlayer;
+
+    // 2. トライ判定 (A): ターン経過によるトライ勝ち確定
+    // lastMovePlayer が指し終えた。もし相手(opp)のライオン候補駒が最奥にすでにいた場合、
+    // lastMovePlayer はその駒を取らなかった（見逃した）ため、opp のトライ勝ちが確定！
+    const oppTargetRow = (opp === P1) ? 0 : ROWS - 1;
+    for (let c = 0; c < COLS; c++) {
+      const cell = this.grid[oppTargetRow][c];
+      if (cell && cell.controller === opp && this.canBeLion(cell.owner, cell.pid)) {
+        this.winner = opp;
+        return;
+      }
+    }
+
+    // 3. トライ判定 (B): 即時判定（ショートカット）
+    // lastMovePlayer の駒が敵陣最奥にいて、相手(opp)が次手でこの駒を取る合法手が0個なら即勝ち
+    const myTargetRow = (lastMovePlayer === P1) ? 0 : ROWS - 1;
+    for (let c = 0; c < COLS; c++) {
+      const cell = this.grid[myTargetRow][c];
+      if (cell && cell.controller === lastMovePlayer && this.canBeLion(cell.owner, cell.pid)) {
+        const oppMoves = this.getLegalMoves(opp);
+        const canCatch = oppMoves.some(m => m.to[0] === c && m.to[1] === myTargetRow);
+        if (!canCatch) {
+          this.winner = lastMovePlayer;
+          return;
+        }
+      }
+    }
+  }
+}
+
+// --- UIコントローラー ---
+let currentState = new GameState();
+currentState.setup();
+
+let history = [currentState.clone()];
+let historyIndex = 0;
+let selectedMoveSource = null; // { type: 'board', col, row } or { type: 'hand', index }
+
+const boardGrid = document.getElementById('board-grid');
+const p1HandPieces = document.getElementById('p1-hand-pieces');
+const p2HandPieces = document.getElementById('p2-hand-pieces');
+const turnIndicator = document.getElementById('turn-indicator');
+const logContent = document.getElementById('log-content');
+const winToast = document.getElementById('win-toast');
+const btnUndo = document.getElementById('btn-undo');
+const btnRedo = document.getElementById('btn-redo');
+const btnReset = document.getElementById('btn-reset');
+const btnCopy = document.getElementById('btn-copy');
+
+let toastTimeout = null;
+function showWinToast(winner) {
+  const winnerText = (winner === P1) ? "P1 Wins!" : "P2 Wins!";
+  winToast.textContent = winnerText;
+  winToast.classList.add('show');
+
+  if (toastTimeout) clearTimeout(toastTimeout);
+  // 0.8秒表示後、1.5秒かけてフェードアウト
+  toastTimeout = setTimeout(() => {
+    winToast.classList.remove('show');
+  }, 800);
+}
+
+function renderPiece(owner, pid, isPromoted, controller) {
+  const pieceDiv = document.createElement('div');
+  pieceDiv.className = `piece ${controller === P1 ? 'p1' : 'p2'}`;
+
+  const cands = currentState.getCandidates(owner, pid);
+
+  // 2x2配置:
+  // 上段: C (H), G
+  // 下段: E, L
+  // 可能性が消えた文字は「空白」
+  const cChar = cands.has('h') ? 'H' : (cands.has('c') ? 'C' : '');
+  const gChar = cands.has('g') ? 'G' : '';
+  const eChar = cands.has('e') ? 'E' : '';
+  const lChar = cands.has('l') ? 'L' : '';
+
+  pieceDiv.innerHTML = `
+    <div class="piece-char ${cands.has('h') ? 'promoted' : ''}">${cChar}</div>
+    <div class="piece-char">${gChar}</div>
+    <div class="piece-char">${eChar}</div>
+    <div class="piece-char">${lChar}</div>
+  `;
+  return pieceDiv;
+}
+
+function render() {
+  // 手番表示
+  if (currentState.winner) {
+    turnIndicator.textContent = (currentState.winner === P1 ? "P1 Wins!" : "P2 Wins!");
+    turnIndicator.className = `turn-indicator ${currentState.winner === P1 ? 'turn-p1' : 'turn-p2'}`;
+  } else {
+    turnIndicator.textContent = (currentState.turn === P1 ? "P1 to Move" : "P2 to Move");
+    turnIndicator.className = `turn-indicator ${currentState.turn === P1 ? 'turn-p1' : 'turn-p2'}`;
+  }
+
+  // 合法手一覧
+  const legalMoves = currentState.getLegalMoves(currentState.turn);
+
+  // 盤面描画
+  boardGrid.innerHTML = '';
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cellDiv = document.createElement('div');
+      cellDiv.className = 'cell';
+
+      // 直前手ハイライト
+      if (currentState.lastMove) {
+        if ((currentState.lastMove.from && currentState.lastMove.from[0] === c && currentState.lastMove.from[1] === r) ||
+            (currentState.lastMove.to[0] === c && currentState.lastMove.to[1] === r)) {
+          cellDiv.classList.add('last-move');
+        }
+      }
+
+      // 選択中かつ合法移動先ハイライト
+      if (selectedMoveSource) {
+        const isLegal = legalMoves.some(m => {
+          if (selectedMoveSource.type === 'board') {
+            return !m.isDrop && m.from[0] === selectedMoveSource.col && m.from[1] === selectedMoveSource.row && m.to[0] === c && m.to[1] === r;
+          } else {
+            return m.isDrop && m.handIndex === selectedMoveSource.index && m.to[0] === c && m.to[1] === r;
+          }
+        });
+        if (isLegal) cellDiv.classList.add('legal-target');
+      }
+
+      const cellData = currentState.grid[r][c];
+      if (cellData) {
+        const pEl = renderPiece(cellData.owner, cellData.pid, currentState.promoted[`${cellData.owner}_${cellData.pid}`], cellData.controller);
+        if (selectedMoveSource && selectedMoveSource.type === 'board' && selectedMoveSource.col === c && selectedMoveSource.row === r) {
+          pEl.classList.add('selected');
+        }
+        cellDiv.appendChild(pEl);
+      }
+
+      cellDiv.onclick = () => onCellClick(c, r);
+      boardGrid.appendChild(cellDiv);
+    }
+  }
+
+  // 持ち駒描画 (先手)
+  p1HandPieces.innerHTML = '';
+  currentState.hands[P1].forEach((p, idx) => {
+    const pEl = renderPiece(p.owner, p.pid, false, P1);
+    if (selectedMoveSource && selectedMoveSource.type === 'hand' && selectedMoveSource.player === P1 && selectedMoveSource.index === idx) {
+      pEl.classList.add('selected');
+    }
+    pEl.onclick = (e) => { e.stopPropagation(); onHandClick(P1, idx); };
+    p1HandPieces.appendChild(pEl);
+  });
+
+  // 持ち駒描画 (後手)
+  p2HandPieces.innerHTML = '';
+  currentState.hands[P2].forEach((p, idx) => {
+    const pEl = renderPiece(p.owner, p.pid, false, P2);
+    if (selectedMoveSource && selectedMoveSource.type === 'hand' && selectedMoveSource.player === P2 && selectedMoveSource.index === idx) {
+      pEl.classList.add('selected');
+    }
+    pEl.onclick = (e) => { e.stopPropagation(); onHandClick(P2, idx); };
+    p2HandPieces.appendChild(pEl);
+  });
+
+  // 棋譜ログ更新
+  logContent.textContent = currentState.historyText.join('\n');
+  logContent.scrollTop = logContent.scrollHeight;
+
+  // ボタン状態 (Undo / Redo)
+  btnUndo.disabled = (historyIndex === 0);
+  if (historyIndex < history.length - 1) {
+    btnRedo.style.display = 'inline-block';
+    btnRedo.disabled = false;
+  } else {
+    btnRedo.style.display = 'none';
+  }
+}
+
+function onCellClick(c, r) {
+  if (currentState.winner) return;
+
+  const legalMoves = currentState.getLegalMoves(currentState.turn);
+
+  // 1. 移動先としてクリックされた場合
+  if (selectedMoveSource) {
+    const move = legalMoves.find(m => {
+      if (selectedMoveSource.type === 'board') {
+        return !m.isDrop && m.from[0] === selectedMoveSource.col && m.from[1] === selectedMoveSource.row && m.to[0] === c && m.to[1] === r;
+      } else {
+        return m.isDrop && m.handIndex === selectedMoveSource.index && m.to[0] === c && m.to[1] === r;
+      }
+    });
+
+    if (move) {
+      // 指し手実行
+      const nextState = currentState.clone();
+      nextState.applyMove(move);
+
+      // 履歴分岐を切り捨てて追加
+      history = history.slice(0, historyIndex + 1);
+      history.push(nextState.clone());
+      historyIndex++;
+      currentState = nextState;
+      selectedMoveSource = null;
+
+      if (currentState.winner) {
+        showWinToast(currentState.winner);
+      }
+      render();
+      return;
+    }
+  }
+
+  // 2. 自分の駒の選択
+  const cellData = currentState.grid[r][c];
+  if (cellData && cellData.controller === currentState.turn) {
+    if (selectedMoveSource && selectedMoveSource.type === 'board' && selectedMoveSource.col === c && selectedMoveSource.row === r) {
+      selectedMoveSource = null; // 選択解除
+    } else {
+      selectedMoveSource = { type: 'board', col: c, row: r };
+    }
+    render();
+    return;
+  }
+
+  selectedMoveSource = null;
+  render();
+}
+
+function onHandClick(player, index) {
+  if (currentState.winner || currentState.turn !== player) return;
+  if (selectedMoveSource && selectedMoveSource.type === 'hand' && selectedMoveSource.index === index) {
+    selectedMoveSource = null;
+  } else {
+    selectedMoveSource = { type: 'hand', player, index };
+  }
+  render();
+}
+
+// ボタンイベント
+btnUndo.onclick = () => {
+  if (historyIndex > 0) {
+    historyIndex--;
+    currentState = history[historyIndex].clone();
+    selectedMoveSource = null;
+    render();
+  }
+};
+
+btnRedo.onclick = () => {
+  if (historyIndex < history.length - 1) {
+    historyIndex++;
+    currentState = history[historyIndex].clone();
+    selectedMoveSource = null;
+    render();
+  }
+};
+
+btnReset.onclick = () => {
+  currentState = new GameState();
+  currentState.setup();
+  history = [currentState.clone()];
+  historyIndex = 0;
+  selectedMoveSource = null;
+  render();
+};
+
+btnCopy.onclick = () => {
+  const text = currentState.historyText.join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const oldText = btnCopy.textContent;
+    btnCopy.textContent = "コピー完了！";
+    setTimeout(() => { btnCopy.textContent = oldText; }, 1500);
+  });
+};
+
+// 初期描画
+render();
+</script>
+</body>
+</html>
